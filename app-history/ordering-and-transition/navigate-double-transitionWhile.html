@@ -1,0 +1,83 @@
+<!doctype html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta name="variant" content="?">
+<meta name="variant" content="?currentchange">
+
+<script type="module">
+import { Recorder, hasVariant } from "./resources/helpers.mjs";
+promise_test(async t => {
+  // Wait for after the load event so that the navigation doesn't get converted
+  // into a replace navigation.
+  await new Promise(resolve => window.onload = () => t.step_timeout(resolve, 0));
+
+  const fromStart = appHistory.current;
+  let fromHash1;
+
+  const recorder = new Recorder({
+    skipCurrentChange: !hasVariant("currentchange"),
+    finalExpectedEvent: "transition.finished fulfilled 2"
+  });
+
+  appHistory.addEventListener("navigatesuccess", t.step_func(() => {
+    recorder.record("navigatesuccess");
+
+    appHistory.transition.finished.then(() => recorder.record("transition.finished fulfilled 2"));
+  }));
+  appHistory.addEventListener("navigateerror", t.step_func(e => {
+    recorder.recordWithError("navigateerror", e.error);
+
+    appHistory.transition.finished.catch(err => recorder.recordWithError("transition.finished rejected 1", err));
+  }));
+  if (hasVariant("currentchange")) {
+    appHistory.addEventListener("currentchange", () => recorder.record("currentchange"));
+  }
+
+  appHistory.addEventListener("navigate", e => {
+    recorder.record("navigate");
+
+    e.signal.addEventListener("abort", () => {
+      recorder.recordWithError("AbortSignal abort", e.signal.reason)
+    });
+
+    e.transitionWhile(new Promise(r => t.step_timeout(r, 1)));
+
+    if (location.hash === "#1") {
+      fromHash1 = appHistory.current;
+    }
+  });
+
+  const result1 = appHistory.navigate("/common/blank.html#1");
+  result1.committed.then(() => recorder.record("committed fulfilled 1"));
+  result1.finished.catch(err => recorder.recordWithError("finished rejected 1", err));
+
+  const result2 = appHistory.navigate("/common/blank.html#2");
+  result2.committed.then(() => recorder.record("committed fulfilled 2"));
+  result2.finished.then(() => recorder.record("finished fulfilled 2"));
+
+  Promise.resolve().then(() => recorder.record("promise microtask"));
+
+  await recorder.readyToAssert;
+
+  recorder.assert([
+    /* event name, location.hash value, appHistory.transition properties */
+    ["navigate", "", null],
+    ["currentchange", "#1", { from: fromStart, navigationType: "push" }],
+    ["AbortSignal abort", "#1", { from: fromStart, navigationType: "push" }],
+    ["navigateerror", "#1", { from: fromStart, navigationType: "push" }],
+
+    ["navigate", "#1", null],
+    ["currentchange", "#2", { from: fromHash1, navigationType: "push" }],
+    ["committed fulfilled 1", "#2", { from: fromHash1, navigationType: "push" }],
+    ["finished rejected 1", "#2", { from: fromHash1, navigationType: "push" }],
+    ["transition.finished rejected 1", "#2", { from: fromHash1, navigationType: "push" }],
+    ["committed fulfilled 2", "#2", { from: fromHash1, navigationType: "push" }],
+    ["promise microtask", "#2", { from: fromHash1, navigationType: "push" }],
+    ["navigatesuccess", "#2", { from: fromHash1, navigationType: "push" }],
+    ["finished fulfilled 2", "#2", null],
+    ["transition.finished fulfilled 2", "#2", null]
+  ]);
+
+  recorder.assertErrorsAreAbortErrors();
+}, "event and promise ordering when navigate() is called repeatedly and handled by transitionWhile()");
+</script>

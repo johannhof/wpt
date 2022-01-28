@@ -1,0 +1,51 @@
+<!doctype html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<script type="module">
+import { Recorder } from "./resources/helpers.mjs";
+
+promise_test(async t => {
+  // Wait for after the load event so that the navigation doesn't get converted
+  // into a replace navigation.
+  await new Promise(resolve => window.onload = () => t.step_timeout(resolve, 0));
+
+  const recorder = new Recorder({
+    finalExpectedEvent: "finished rejected"
+  });
+
+  appHistory.addEventListener("navigateerror", e => {
+    recorder.recordWithError("navigateerror", e.error);
+  });
+
+  appHistory.addEventListener("navigate", t.step_func(e => {
+    recorder.record("navigate");
+
+    e.signal.addEventListener("abort", () => {
+      recorder.recordWithError("AbortSignal abort", e.signal.reason)
+    });
+
+    e.preventDefault();
+  }));
+
+  const { committed, finished } = appHistory.navigate("/common/blank.html#1");
+  committed.catch(() => recorder.record("committed rejected"));
+  finished.catch(err => recorder.recordWithError("finished rejected", err));
+
+  Promise.resolve().then(() => recorder.record("promise microtask"));
+
+  await recorder.readyToAssert;
+
+  recorder.assert([
+    /* event name, location.hash value, appHistory.transition properties */
+    ["navigate", "", null],
+    ["AbortSignal abort", "", null],
+    ["navigateerror", "", null],
+    ["committed rejected", "", null],
+    ["finished rejected", "", null],
+    ["promise microtask", "", null]
+  ]);
+
+  recorder.assertErrorsAreAbortErrors();
+}, "event and promise ordering for appHistory.navigate() where the navigate event is canceled");
+</script>

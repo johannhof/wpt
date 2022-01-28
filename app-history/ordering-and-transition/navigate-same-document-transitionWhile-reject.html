@@ -1,0 +1,56 @@
+<!doctype html>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<meta name="variant" content="?">
+<meta name="variant" content="?currentchange">
+
+<script type="module">
+import { Recorder, hasVariant } from "./resources/helpers.mjs";
+
+promise_test(async t => {
+  // Wait for after the load event so that the navigation doesn't get converted
+  // into a replace navigation.
+  await new Promise(resolve => window.onload = () => t.step_timeout(resolve, 0));
+
+  const from = appHistory.current;
+  const expectedError = new Error("boo");
+
+  const recorder = new Recorder({
+    skipCurrentChange: !hasVariant("currentchange"),
+    finalExpectedEvent: "transition.finished rejected"
+  });
+
+  appHistory.addEventListener("navigateerror", e => {
+    recorder.recordWithError("navigateerror", e.error);
+
+    appHistory.transition.finished.catch(err => recorder.recordWithError("transition.finished rejected", err));
+  });
+  if (hasVariant("currentchange")) {
+    appHistory.addEventListener("currentchange", () => recorder.record("currentchange"));
+  }
+
+  appHistory.addEventListener("navigate", e => {
+    e.transitionWhile(Promise.reject(expectedError));
+  });
+
+  const { committed, finished } = appHistory.navigate("#1");
+  committed.then(() => recorder.record("committed fulfilled"));
+  finished.catch(err => recorder.recordWithError("finished rejected", err));
+
+  Promise.resolve().then(() => recorder.record("promise microtask"));
+
+  await recorder.readyToAssert;
+
+  recorder.assert([
+    /* event name, location.hash value, appHistory.transition properties */
+    ["currentchange", "#1", { from, navigationType: "push" }],
+    ["committed fulfilled", "#1", { from, navigationType: "push" }],
+    ["promise microtask", "#1", { from, navigationType: "push" }],
+    ["navigateerror", "#1", { from, navigationType: "push" }],
+    ["finished rejected", "#1", null],
+    ["transition.finished rejected", "#1", null],
+  ]);
+
+  recorder.assertErrorsAre(expectedError);
+}, "event and promise ordering for same-document appHistory.navigate() intercepted by passing a rejected promise to transitionWhile()");
+</script>
