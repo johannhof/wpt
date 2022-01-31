@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<title>Sub Apps: Error cases for add()</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<body></body>
+
+<script>
+
+promise_test(async t => {
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  const iframeNavigator = iframe.contentWindow.navigator;
+  const iframeDOMException = iframe.contentWindow.DOMException;
+
+  // Detach the frame.
+  iframe.remove();
+
+  // At this point the iframe is detached and unloaded, and its execution
+  // context is gone.
+  await promise_rejects_dom(t, 'NotFoundError', iframeDOMException, iframeNavigator.subApps.add('app'));
+}, "The object is no longer associated to a document.");
+
+promise_test(async t => {
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+
+  const iframeNavigator = iframe.contentWindow.navigator;
+  const iframeDOMException = iframe.contentWindow.DOMException;
+
+  await promise_rejects_dom(t, 'InvalidNodeTypeError', iframeDOMException, iframeNavigator.subApps.add('app'));
+
+  // Clean up.
+  iframe.remove();
+}, "API is only supported in top-level browsing contexts.");
+
+promise_test(t => {
+  return promise_rejects_dom(t, 'URLMismatchError', navigator.subApps.add(
+                             'https://some.other.origin/'));
+}, 'Wrong origin URL argument.');
+
+</script>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<title>Sub Apps: Valid calls for add()</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+
+promise_test(async t => {
+  const same_origin_url = document.location.origin + '/sub-app';
+  const result = await navigator.subApps.add(same_origin_url);
+}, 'Same origin fully qualified URL.');
+
+promise_test(async t => {
+  const result = await navigator.subApps.add('sub/app');
+}, 'Relative path.');
+
+promise_test(async t => {
+  const result = await navigator.subApps.add('/sub/app');
+}, 'Absolute path.');
+
+</script>
